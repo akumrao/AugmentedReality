@@ -1,0 +1,189 @@
+'use strict';
+
+var os = require('os');
+const fs = require('fs');
+var nodeStatic = require('node-static');
+var https = require('https');
+var socketIO = require('socket.io');
+//const ortc = require('./ortc.js');
+const config = require('./config');
+const express = require('express');
+
+//const uuidV4 = require('uuid/v4');
+////import { v4 as uuidV4 } from 'uuid';
+const { v4: uuidV4 } = require('uuid');
+
+
+let webServer;
+let socketServer;
+let expressApp;
+let io;
+
+(async () => {
+  try {
+    await runExpressApp();
+    await runWebServer();
+    await runSocketServer();
+  } catch (err) {
+    console.error(err);
+  }
+})();
+
+
+
+console.log("https://localhost:8080/");
+
+let serverSocketid =null;
+
+
+var fileServer = new(nodeStatic.Server)();
+// var app = http.createServer(function(req, res) {
+//  fileServer.serve(req, res);
+// }).listen(8080);
+
+async function runExpressApp() {
+  expressApp = express();
+  expressApp.use(express.json());
+  expressApp.use(express.static(__dirname));
+
+  expressApp.use((error, req, res, next) => {
+    if (error) {
+      console.log('Express app error,', error.message);
+
+      error.status = error.status || (error.name === 'TypeError' ? 400 : 500);
+
+      res.statusMessage = error.message;
+      res.status(error.status).send(String(error));
+    } else {
+      next();
+    }
+  });
+}
+
+async function runWebServer() {
+
+  console.error('runWebServer');
+
+  const { sslKey, sslCrt } = config;
+  if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
+    console.error('SSL files are not found. check your config.js file');
+    process.exit(0);
+  }
+  const tls = {
+    cert: fs.readFileSync(sslCrt),
+    key: fs.readFileSync(sslKey),
+  };
+  webServer = https.createServer(tls, expressApp);
+  webServer.on('error', (err) => {
+    console.error('starting web server failed:', err.message);
+  });
+
+  
+  await new Promise((resolve) => {
+    const { listenIp, listenPort } = config;
+    webServer.listen(listenPort, listenIp, () => {
+      console.log('server is running');
+      console.log(`open https://127.0.0.1:${listenPort} in your web browser`);
+
+    //  listenIps = config.webRtcTransport.listenIps;
+      //const ip = listenIps.announcedIp || listenIps.ip;
+     // console.log('listen ips ' + JSON.stringify(listenIps, null, 4) );
+
+      resolve();
+    });
+  });
+}
+
+async function runSocketServer() {
+
+    console.error('runSocketServer');
+
+
+   io = socketIO.listen(webServer);
+
+
+
+
+  // convenience function to log server messages on the client
+  function log() {
+    var array = ['Message from server:'];
+     array.push.apply(array, arguments);
+     socket.emit('log', array);
+     console.log(array);
+  }
+
+
+ 
+
+
+
+
+
+//////////////////////////////
+
+
+
+
+
+// var app = require('express')();
+// var https = require('https').Server(app);
+// var io = require('socket.io')(http, {
+//   transports: ['polling']
+// });
+// //const ngrok = require('ngrok');
+
+// app.get('/', function(req, res){
+//   res.sendFile(__dirname + '/index.html');
+// });
+
+// simple and dirty WebRTC signaling (without sending each ice candidates)
+// see: https://qiita.com/massie_g/items/f5baf316652bbc6fcef1
+var userId = 0;
+io.on('connection', function(socket){
+  socket.userId = userId ++;
+  console.log('a user connected, user id: ' + socket.userId);
+  socket.emit("welcome", { id: socket.userId });
+  io.emit("join", { id: socket.userId } );
+
+  socket.on('chat', function(msg){
+    console.log('message from user#' + socket.userId + ": " + msg);
+    io.emit('chat', {
+      id: socket.userId,
+      msg: msg
+    });
+  });
+  socket.on('webrtc-offer', function(msg){
+    console.log('webrtc-offer from user#' + socket.userId + ": " + msg);
+    io.emit('webrtc-offer', {
+      id: socket.userId,
+      msg: msg
+    });
+  });
+  socket.on('webrtc-answer', function(msg){
+    console.log('webrtc-answer from user#' + socket.userId + ": " + msg);
+    io.emit('webrtc-answer', {
+      id: socket.userId,
+      msg: msg
+    });
+  });
+  socket.on('webrtc-icecandidate', function(msg){
+    console.log('webrtc-icecandidate from user#' + socket.userId + ": " + msg);
+    io.emit('webrtc-icecandidate', {
+      id: socket.userId,
+      msg: msg
+    });
+  });
+
+  socket.on('disconnect', function() {
+     console.log('disconnect user#' + socket.userId );
+    io.emit("exit", { id: socket.userId });
+  });
+
+   socket.on('hi', function() {
+    console.log('hi' + socket.userId );
+  });
+
+});
+
+}
+
