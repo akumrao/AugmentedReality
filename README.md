@@ -78,7 +78,7 @@ set DEPOT_TOOLS_WIN_TOOLCHAIN=0
 
 cd src git branch -r git checkout branch-heads/m75
 
-git remote add arvind https://github.com/scopear/webrtc.git
+git remote add arvind git@github.com:akumrao/webrtcwithsocketio.git
 
 git remote update
 
